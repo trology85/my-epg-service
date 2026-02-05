@@ -3,5 +3,8 @@
   <channel id="trt2.hd.tr">
     <display-name>TRT 2</display-name>
   </channel>
+  <channel id="cnbce.hd.tr">
+    <display-name>CNBC-E</display-name>
+  </channel>
 
 </tv>
