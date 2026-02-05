@@ -2,12 +2,16 @@ name: EPG Guncelleyici
 
 on:
   schedule:
-    - cron: '0 6,18 * * *' # Günde 2 kez (06:00 ve 18:00) otomatik çalışır
-  workflow_dispatch: # İstediğin zaman elle çalıştırmanı sağlar
+    - cron: '0 6,18 * * *'
+  workflow_dispatch:
 
 jobs:
   build:
     runs-on: ubuntu-latest
+    # Bota açıkça yazma izni veriyoruz
+    permissions:
+      contents: write
+      
     steps:
       - name: Kodlari cek
         uses: actions/checkout@v3
@@ -28,5 +32,6 @@ jobs:
           git config --global user.name "EPG Bot"
           git config --global user.email "bot@epg.com"
           git add epg.xml
-          git commit -m "EPG Guncellendi: $(date)"
+          # Eğer dosya değişmediyse hata vermemesi için "|| exit 0" ekledik
+          git commit -m "EPG Guncellendi: $(date)" || exit 0
           git push
