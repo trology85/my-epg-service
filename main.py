@@ -1,64 +1,54 @@
 import requests
-from datetime import datetime
+import gzip
 import xml.etree.ElementTree as ET
+from io import BytesIO
 
-def get_epg_data(api_url, channel_id, channel_display_name):
+def download_and_parse(url):
+    print(f"📥 İndiriliyor: {url}")
     try:
-        response = requests.get(api_url, timeout=15)
-        data = response.json()
-        
-        program_list = []
-        # TRT ve CNBC-e API yapıları benzerse bu döngü çalışır
-        # Değilse her kanal için küçük modifiyeler yaparız
-        items = data.get('items', [])
-        
-        for item in items:
-            title = item.get('title', 'Belirsiz Program')
-            description = item.get('description', 'Açıklama bulunamadı.')
-            start_time = item.get('startDate')
-            end_time = item.get('endDate')
-            
-            if start_time and end_time:
-                st = datetime.strptime(start_time, "%Y-%m-%dT%H:%M:%SZ").strftime("%Y%m%d%H%M%S") + " +0300"
-                et = datetime.strptime(end_time, "%Y-%m-%dT%H:%M:%SZ").strftime("%Y%m%d%H%M%S") + " +0300"
-                
-                prog_xml = f"""  <programme start="{st}" stop="{et}" channel="{channel_id}">
-    <title lang="tr">{title}</title>
-    <desc lang="tr">{description}</desc>
-  </programme>"""
-                program_list.append(prog_xml)
-            
-        print(f"✅ {channel_display_name}: {len(program_list)} program çekildi.")
-        return program_list
+        response = requests.get(url, timeout=30)
+        # Gzip sıkıştırılmış dosyayı açıyoruz
+        with gzip.open(BytesIO(response.content), 'rb') as f:
+            xml_content = f.read()
+        return ET.fromstring(xml_content)
     except Exception as e:
-        print(f"❌ {channel_display_name} hatası: {e}")
-        return []
+        print(f"❌ Hata oluştu ({url}): {e}")
+        return None
 
-def build_xml():
-    # Kanal Tanımlamaları
-    channels = [
-        {"id": "trt2.hd.tr", "name": "TRT 2", "url": "https://api-izle.trt.net.tr/v1/broadcast/trt-2/daily"},
-        {"id": "cnbce.hd.tr", "name": "CNBC-E", "url": "https://api-izle.trt.net.tr/v1/broadcast/cnbc-e/daily"} 
-        # Not: CNBC-e için TRT altyapısı örnektir, gerekirse URL'i güncelleyeceğiz.
+def build_mega_epg():
+    urls = [
+        "https://epgshare01.online/epgshare01/epg_ripper_TR1.xml.gz",
+        "https://epgshare01.online/epgshare01/epg_ripper_TR3.xml.gz",
+        "https://epgshare01.online/epgshare01/epg_ripper_DE1.xml.gz"
     ]
     
-    xml_header = '<?xml version="1.0" encoding="UTF-8"?>\n<tv>\n'
-    
-    # Kanal başlıklarını oluştur
-    for ch in channels:
-        xml_header += f'  <channel id="{ch["id"]}">\n    <display-name>{ch["name"]}</display-name>\n  </channel>\n'
-    
-    # Programları topla
-    all_programs = []
-    for ch in channels:
-        all_programs.extend(get_epg_data(ch["url"], ch["id"], ch["name"]))
-    
-    xml_footer = "\n</tv>"
-    
-    with open("epg.xml", "w", encoding="utf-8") as f:
-        f.write(xml_header + "\n".join(all_programs) + xml_footer)
-    
-    print(f"\n🚀 Toplam {len(all_programs)} yayın akışı epg.xml dosyasına kaydedildi!")
+    # Ana XML yapısını kuruyoruz
+    root_new = ET.Element("tv")
+    channels_added = set()
+    program_count = 0
+
+    for url in urls:
+        root_data = download_and_parse(url)
+        if root_data is None: continue
+
+        # Önce kanalları (channel) ekleyelim (kopya olmasın diye kontrol ederek)
+        for channel in root_data.findall('channel'):
+            ch_id = channel.get('id')
+            if ch_id not in channels_added:
+                root_new.append(channel)
+                channels_added.add(ch_id)
+
+        # Sonra programları (programme) ekleyelim
+        for programme in root_data.findall('programme'):
+            root_new.append(programme)
+            program_count += 1
+
+    # Dosyayı kaydet
+    tree = ET.ElementTree(root_new)
+    tree.write("epg.xml", encoding="utf-8", xml_declaration=True)
+    print(f"\n✅ İşlem Tamamlandı!")
+    print(f"📡 Toplam Kanal: {len(channels_added)}")
+    print(f"📺 Toplam Program: {program_count}")
 
 if __name__ == "__main__":
-    build_xml()
+    build_mega_epg()
